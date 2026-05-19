@@ -242,4 +242,11 @@ CHIP_CSRCS += crypto_mbedtls.c
 CHIP_CSRCS += tls_mbedtls.c
 CHIP_CSRCS += aes-siv.c
 
+# Force esp_mbedtls.h before any mbedtls headers for crypto_mbedtls-* and tls_mbedtls files.
+# These files include mbedtls headers before the __NuttX__ esp_mbedtls.h guard,
+# causing implicit-declaration errors. -include guarantees the rename macros are
+# active before any mbedtls header is parsed.
+# Use TOPDIR (reliable in all sub-make contexts) not ARCH_SRCDIR (empty in makedepfile).
+CFLAGS += -include $(TOPDIR)$(DELIM)arch$(DELIM)risc-v$(DELIM)src$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)nuttx$(DELIM)include$(DELIM)mbedtls$(DELIM)esp_mbedtls.h
+
 endif
