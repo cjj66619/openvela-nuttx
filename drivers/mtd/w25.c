@@ -114,12 +114,17 @@
 
 #define W25_JEDEC_WINBOND          0xef  /* Winbond manufacturer ID */
 #define W25_JEDEC_AMIC             0x37  /* AMIC manufacturer ID */
+#define W25_JEDEC_NM               0x52  /* NM / NORMEM (Nuomei) manufacturer ID.
+                                          * Adds support for NM25Q128 and the
+                                          * other NM25Q* clones that are
+                                          * register-compatible with W25Q. */
 
 #define W25X_JEDEC_MEMORY_TYPE     0x30  /* W25X memory type */
 #define W25Q_JEDEC_MEMORY_TYPE_A   0x40  /* W25Q memory type */
 #define W25Q_JEDEC_MEMORY_TYPE_B   0x60  /* W25Q memory type */
 #define W25Q_JEDEC_MEMORY_TYPE_C   0x50  /* W25Q memory type */
 #define W25Q_JEDEC_MEMORY_TYPE_D   0x70  /* W25QJV memory type (backward compatible) */
+#define NM25Q_JEDEC_MEMORY_TYPE    0x21  /* NM25Q (NORMEM) memory type code */
 
 #define W25_JEDEC_CAPACITY_2MBIT   0x12  /* 256x1024  = 2Mbit memory capacity */
 #define W25_JEDEC_CAPACITY_8MBIT   0x14  /* 256x4096  = 8Mbit memory capacity */
@@ -407,12 +412,14 @@ static inline int w25_readid(struct w25_dev_s *priv)
   /* Check for a valid manufacturer and memory type */
 
   if ((manufacturer == W25_JEDEC_WINBOND  ||
-       manufacturer == W25_JEDEC_AMIC)    &&
+       manufacturer == W25_JEDEC_AMIC     ||
+       manufacturer == W25_JEDEC_NM)      &&
       (memory == W25X_JEDEC_MEMORY_TYPE   ||
        memory == W25Q_JEDEC_MEMORY_TYPE_A ||
        memory == W25Q_JEDEC_MEMORY_TYPE_B ||
        memory == W25Q_JEDEC_MEMORY_TYPE_C ||
-       memory == W25Q_JEDEC_MEMORY_TYPE_D))
+       memory == W25Q_JEDEC_MEMORY_TYPE_D ||
+       memory == NM25Q_JEDEC_MEMORY_TYPE))
     {
       /* Okay.. is it a FLASH capacity that we understand? If so, save
        * the FLASH capacity.

@@ -25,3 +25,11 @@
 #ifdef CONFIG_SYSTEM_ADBD
 adbd &
 #endif
+
+#ifdef CONFIG_EXAMPLES_WIFICONN
+wificonn 312 125110011000
+#endif
+
+#ifdef CONFIG_EXAMPLES_DISCOVER
+discover &
+#endif

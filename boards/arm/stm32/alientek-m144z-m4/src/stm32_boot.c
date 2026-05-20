@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arm/stm32/stm32f4discovery/src/stm32_boot.c
+ * boards/arm/stm32/olimex-stm32-e407/src/stm32_boot.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -28,16 +28,16 @@
 
 #include <debug.h>
 
+#include <nuttx/arch.h>
 #include <nuttx/board.h>
 #include <arch/board/board.h>
 
 #include "arm_internal.h"
-#include "nvic.h"
-#include "itm.h"
-
+#include "stm32_ccm.h"
 #include "stm32.h"
-#include "stm32f4discovery.h"
+#include "stm32_i2c.h"
 
+#include "olimex-stm32-e407.h"
 #include "boot_timing.h"
 
 /****************************************************************************
@@ -57,25 +57,21 @@
 
 void stm32_boardinitialize(void)
 {
+  /* Arm the boot tracer as early as possible.  At this point the system
+   * clock has been programmed (stm32_clockconfig() ran first thing inside
+   * __start) so DWT CYCCNT will tick at the final SYSCLK rate; everything
+   * before us (.bss/.data copy, low-level UART setup, ...) is captured as
+   * a single "pre-board" delta against this t0.
+   */
+
   boot_timing_init();
   boot_mark("boardinitialize");
 
-#if defined(CONFIG_STM32_SPI1) || defined(CONFIG_STM32_SPI2) || defined(CONFIG_STM32_SPI3)
-  /* Configure SPI chip selects if 1) SPI is not disabled, and 2) the weak
-   * function stm32_spidev_initialize() has been brought into the link.
-   */
-
-  if (stm32_spidev_initialize)
-    {
-      stm32_spidev_initialize();
-    }
-#endif
-
-#ifdef CONFIG_STM32_OTGFS
+#if defined(CONFIG_STM32_OTGFS) || defined(CONFIG_STM32_OTGHS)
   /* Initialize USB if the 1) OTG FS controller is in the configuration and
    * 2) disabled, and 3) the weak function stm32_usbinitialize() has been
-   * brought into the build. Presumably either CONFIG_USBDEV or
-   * CONFIG_USBHOST is also selected.
+   * brought into the build. Presumeably either CONFIG_USBDEV is also
+   * selected.
    */
 
   if (stm32_usbinitialize)
@@ -84,19 +80,25 @@ void stm32_boardinitialize(void)
     }
 #endif
 
-#ifdef HAVE_NETMONITOR
-  /* Configure board resources to support networking. */
-
-  if (stm32_netinitialize)
-    {
-      stm32_netinitialize();
-    }
-#endif
-
 #ifdef CONFIG_ARCH_LEDS
   /* Configure on-board LEDs if LED support has been selected. */
 
   board_autoled_initialize();
+#endif
+
+#ifdef CONFIG_ARCH_BUTTONS
+  /* Configure on-board BUTTONs if BUTTON support has been selected. */
+
+  board_button_initialize();
+#endif
+
+#ifdef CONFIG_STM32_SPI1
+  /* Configure board-side SPI chip-select GPIOs early.  Doing this before
+   * any SPI device driver wakes up guarantees no chip is left floating
+   * during NuttX bring-up.
+   */
+
+  stm32_spidev_initialize();
 #endif
 
   boot_mark("boardinitialize_done");

@@ -66,6 +66,8 @@
 
 #include "stm32f4discovery.h"
 
+#include "boot_timing.h"
+
 /* Conditional logic in stm32f4discovery.h will determine if certain features
  * are supported.  Tests for these features need to be made after including
  * stm32f4discovery.h.
@@ -211,6 +213,8 @@ int stm32_bringup(void)
   struct rtc_lowerhalf_s *lower;
 #endif
   int ret = OK;
+
+  boot_mark("bringup_enter");
 
 #if defined(CONFIG_I2C) && defined(CONFIG_SYSTEM_I2CTOOL)
   stm32_i2ctool();
@@ -622,6 +626,9 @@ int stm32_bringup(void)
       syslog(LOG_ERR, "ERROR: stm32_mfrc522initialize() failed: %d\n", ret);
     }
 #endif
+
+  boot_mark("bringup_done");
+  boot_timing_dump();
 
   return ret;
 }
