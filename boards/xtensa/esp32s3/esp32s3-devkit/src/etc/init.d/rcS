@@ -46,6 +46,10 @@ ptpd -i wlan0 -r -S -B &
 httpnode &
 #endif
 
+#ifdef CONFIG_EXAMPLES_INFERD
+inferd server &
+#endif
+
 #ifdef CONFIG_EXAMPLES_NODELINK_DAEMON
 nodelink_daemon &
 #endif
