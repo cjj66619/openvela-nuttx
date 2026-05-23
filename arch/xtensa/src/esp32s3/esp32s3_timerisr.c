@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <time.h>
+#include <nuttx/spinlock.h>
 
 #include <arch/board/board.h>
 #include <arch/irq.h>
@@ -45,8 +46,74 @@
 #define ESP32S3_SYSTIMER_TICKS_PER_SEC  (16 * 1000 * 1000)
 
 /****************************************************************************
+ * Private Data
+ ****************************************************************************/
+
+#ifdef CONFIG_CLOCK_ADJTIME
+static spinlock_t g_adjtime_lock = SP_UNLOCKED;
+#endif
+
+/****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
+#ifdef CONFIG_CLOCK_ADJTIME
+/****************************************************************************
+ * Name: up_adjtime
+ *
+ * Description:
+ *   Adjusts the SYSTIMER TARGET0 period by ppb (parts per billion) to
+ *   implement fine-grained clock frequency steering for adjtime() / ptpd.
+ *   Positive ppb speeds the clock up; negative slows it down.
+ *
+ * Called from within critical section or interrupt context.
+ ****************************************************************************/
+
+void up_adjtime(long ppb)
+{
+  irqstate_t flags;
+  uint32_t   period;
+  uint32_t   regval;
+
+  period = ESP32S3_SYSTIMER_TICKS_PER_SEC / CLOCKS_PER_SEC;
+
+  if (ppb != 0)
+    {
+      period -= (long long)ppb * (long long)period / 1000000000LL;
+
+      /* Clamp to 26-bit field */
+
+      if (period > SYSTIMER_TARGET0_PERIOD)
+        {
+          period = SYSTIMER_TARGET0_PERIOD;
+        }
+
+      if (period == 0)
+        {
+          period = 1;
+        }
+    }
+
+  flags = spin_lock_irqsave(&g_adjtime_lock);
+
+  /* Write new period, preserving PERIOD_MODE bit */
+
+  regval = SYSTIMER_TARGET0_PERIOD_MODE |
+           ((period & SYSTIMER_TARGET0_PERIOD_V) <<
+            SYSTIMER_TARGET0_PERIOD_S);
+  putreg32(regval, SYSTIMER_TARGET0_CONF_REG);
+
+  /* Latch new period into comparator */
+
+  putreg32(SYSTIMER_TIMER_COMP0_LOAD, SYSTIMER_COMP0_LOAD_REG);
+
+  spin_unlock_irqrestore(&g_adjtime_lock, flags);
+}
+#endif
 
 /****************************************************************************
  * Name: systimer_isr

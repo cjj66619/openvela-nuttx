@@ -38,6 +38,10 @@ wifimulti
 discover &
 #endif
 
+#ifdef CONFIG_NETUTILS_PTPD
+ptpd -i wlan0 -r -S -B &
+#endif
+
 #ifdef CONFIG_EXAMPLES_HTTPNODE
 httpnode &
 #endif
