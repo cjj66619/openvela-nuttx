@@ -47,9 +47,12 @@ httpnode &
 #endif
 
 #ifdef CONFIG_EXAMPLES_INFERD
-inferd server &
 #endif
 
 #ifdef CONFIG_EXAMPLES_NODELINK_DAEMON
 nodelink_daemon &
+#endif
+
+#ifdef CONFIG_EXAMPLES_KWSNODE_AUTOSTART
+kwsnode -t 70 -L 4449 &
 #endif
