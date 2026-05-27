@@ -45,6 +45,7 @@
 #include "rom/ets_sys.h"
 #include "soc/soc_caps.h"
 #include "private/esp_modem_wrapper.h"
+#include <nuttx/semaphore.h>
 
 /****************************************************************************
  * Pre-processor Definitions

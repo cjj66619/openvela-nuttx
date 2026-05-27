@@ -246,6 +246,13 @@ VPATH += $(WIFI_WPA_SUPPLICANT)$(DELIM)esp_supplicant$(DELIM)src$(DELIM)crypto
 
 INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)$(WIFI_WPA_SUPPLICANT)$(DELIM)src$(DELIM)crypto
 
+# Force esp_mbedtls.h before any mbedtls headers for crypto_mbedtls-* and tls_mbedtls files.
+# These files include mbedtls headers before the __NuttX__ esp_mbedtls.h guard,
+# causing implicit-declaration errors when the macro renames apply to call sites
+# but not to the earlier declarations.  -include guarantees the rename macros
+# are active before any mbedtls header is parsed.
+CFLAGS += -include $(TOPDIR)$(DELIM)arch$(DELIM)xtensa$(DELIM)src$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)nuttx$(DELIM)include$(DELIM)mbedtls$(DELIM)esp_mbedtls.h
+
 CHIP_CSRCS += crypto_mbedtls-bignum.c
 CHIP_CSRCS += crypto_mbedtls-ec.c
 CHIP_CSRCS += crypto_mbedtls-rsa.c

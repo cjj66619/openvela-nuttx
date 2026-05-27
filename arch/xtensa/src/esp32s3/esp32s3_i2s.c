@@ -43,6 +43,7 @@
 #include <nuttx/irq.h>
 #include <nuttx/clock.h>
 #include <nuttx/semaphore.h>
+#include <nuttx/mutex.h>
 #include <nuttx/spinlock.h>
 #include <nuttx/mqueue.h>
 #include <nuttx/circbuf.h>
@@ -735,6 +736,19 @@ static int i2s_rxdma_start(struct esp32s3_i2s_s *priv)
 {
   struct esp32s3_buffer_s *bfcontainer;
   size_t eof_nbytes;
+  /* If the upper-half has not yet issued AUDIOIOC_START, do not kick the
+   * DMA hardware.  Otherwise buffers enqueued during PREPARED state would
+   * complete with streaming==false, get tagged AUDIO_APB_FINAL by the
+   * worker, and trigger spurious AUDIO_MSG_COMPLETE that aborts the
+   * client before the first inference window is collected.  The pending
+   * queue will be drained by the AUDIOIOC_START handler once streaming
+   * transitions to true.
+   */
+
+  if (!priv->streaming)
+    {
+      return OK;
+    }
 
   /* If there is already an active transmission in progress, then bail
    * returning success.
@@ -749,6 +763,13 @@ static int i2s_rxdma_start(struct esp32s3_i2s_s *priv)
 
   if (sq_empty(&priv->rx.pend))
     {
+      static int g_stall_count = 0;
+      g_stall_count++;
+      if (g_stall_count <= 10)
+        {
+          syslog(LOG_INFO, "[TRACE] STALL#%d rx.pend EMPTY rx.act EMPTY -- DMA halted\n",
+                 g_stall_count);
+        }
       return OK;
     }
 
@@ -941,7 +962,6 @@ static int i2s_rxdma_setup(struct esp32s3_i2s_s *priv,
   struct esp32s3_dmadesc_s *inlink;
   uint32_t bytes_queued;
   irqstate_t flags;
-
   DEBUGASSERT(bfcontainer && bfcontainer->apb);
 
   inlink = bfcontainer->dma_link;
@@ -1103,6 +1123,7 @@ static void i2s_rx_schedule(struct esp32s3_i2s_s *priv,
   struct esp32s3_dmadesc_s *bfdesc;
   int ret;
 
+
   /* Upon entry, the transfer(s) that just completed are the ones in the
    * priv->rx.act queue.
    */
@@ -1256,7 +1277,6 @@ static void i2s_rx_worker(void *arg)
   struct esp32s3_buffer_s *bfcontainer;
   struct esp32s3_dmadesc_s *dmadesc;
   irqstate_t flags;
-
   DEBUGASSERT(priv);
 
   /* When the transfer was started, the active buffer containers were removed
@@ -1833,14 +1853,14 @@ static uint32_t i2s_set_datawidth(struct esp32s3_i2s_s *priv)
         {
           modifyreg32(I2S_RX_CONF1_REG(priv->config->port),
                       I2S_RX_TDM_WS_WIDTH_M,
-                      FIELD_TO_VALUE(I2S_RX_TDM_WS_WIDTH,
-                      priv->data_width - 1));
+                      FIELD_TO_VALUE(I2S_RX_TDM_WS_WIDTH, 1));
         }
       else
         {
           modifyreg32(I2S_RX_CONF1_REG(priv->config->port),
                       I2S_RX_TDM_WS_WIDTH_M,
-                      FIELD_TO_VALUE(I2S_RX_TDM_WS_WIDTH, 1));
+                      FIELD_TO_VALUE(I2S_RX_TDM_WS_WIDTH,
+                      priv->data_width - 1));
         }
     }
 #endif /* I2S_HAVE_RX */
@@ -2289,6 +2309,40 @@ static void i2s_rx_channel_stop(struct esp32s3_i2s_s *priv)
 
       priv->rx_started = false;
 
+      /* Purge stale buffer containers from the active/done queues.
+       * The DMA was aborted mid-flight by DMA_INLINK_STOP, so the
+       * worker callback that normally returns these containers to
+       * the pool will never run.  Release the apb reference taken
+       * by i2s_rxdma_setup and recycle the container, otherwise the
+       * next session sees rx.act non-empty and i2s_rxdma_start
+       * believes a transfer is already in progress.
+       */
+
+      {
+        sq_entry_t *entry;
+        sq_queue_t *queues[3];
+        int qi;
+
+        queues[0] = &priv->rx.act;
+        queues[1] = &priv->rx.done;
+        queues[2] = &priv->rx.pend;
+
+        for (qi = 0; qi < 3; qi++)
+          {
+            while ((entry = sq_remfirst(queues[qi])) != NULL)
+              {
+                struct esp32s3_buffer_s *bfc =
+                    (struct esp32s3_buffer_s *)entry;
+                if (bfc->apb != NULL)
+                  {
+                    apb_free(bfc->apb);
+                  }
+
+                i2s_buf_free(priv, bfc);
+              }
+          }
+      }
+
       i2sinfo("Stopped RX channel of port %d\n", priv->config->port);
     }
 }
@@ -2361,7 +2415,6 @@ static int i2s_rx_interrupt(int irq, void *context, void *arg)
 {
   struct esp32s3_i2s_s *priv = (struct esp32s3_i2s_s *)arg;
   struct esp32s3_dmadesc_s *cur = NULL;
-
   uint32_t status = GET_GDMA_CH_REG(DMA_IN_INT_ST_CH0_REG,
                                     priv->dma_channel);
 
@@ -2963,9 +3016,23 @@ static int i2s_ioctl(struct i2s_dev_s *dev, int cmd, unsigned long arg)
 
       case AUDIOIOC_START:
         {
+          irqstate_t flags;
+
           i2sinfo("AUDIOIOC_START\n");
 
+          flags = spin_lock_irqsave(&priv->slock);
           priv->streaming = true;
+
+          /* Drain any buffers that were queued during PREPARED state.
+           * i2s_rxdma_start short-circuits while streaming==false; now
+           * that we are running, kick off the first DMA transfer so the
+           * pending chain begins flowing.
+           */
+
+#ifdef I2S_HAVE_RX
+          i2s_rxdma_start(priv);
+#endif
+          spin_unlock_irqrestore(&priv->slock, flags);
 
           ret = OK;
         }
@@ -2983,10 +3050,47 @@ static int i2s_ioctl(struct i2s_dev_s *dev, int cmd, unsigned long arg)
 
           priv->streaming = false;
 
+          /* Actually halt the DMA hardware so no further callbacks fire.
+           * Without this, hpwork processes stale DMA completions after
+           * the audio device is closed, causing use-after-free panics.
+           */
+
+          if (!arg)
+            {
+#ifdef I2S_HAVE_RX
+              i2s_rx_channel_stop(priv);
+#endif
+            }
+          else
+            {
+#ifdef I2S_HAVE_TX
+              i2s_tx_channel_stop(priv);
+#endif
+            }
+
           ret = OK;
         }
         break;
 #endif /* CONFIG_AUDIO_EXCLUDE_STOP */
+
+      /* AUDIOIOC_GETBUFFERINFO - Return buffer sizing preferences.
+       *   Required so audio upper-half sets upper->nbuffers before
+       *   AUDIOIOC_ALLOCBUFFER; without it upper->nbuffers stays 0
+       *   and ALLOCBUFFER returns 0 without allocating anything.
+       */
+
+      case AUDIOIOC_GETBUFFERINFO:
+        {
+          FAR struct ap_buffer_info_s *bufinfo =
+            (FAR struct ap_buffer_info_s *)arg;
+
+          i2sinfo("AUDIOIOC_GETBUFFERINFO\n");
+
+          bufinfo->buffer_size = CONFIG_AUDIO_BUFFER_NUMBYTES;
+          bufinfo->nbuffers    = CONFIG_AUDIO_NUM_BUFFERS;
+          ret = OK;
+        }
+        break;
 
       /* AUDIOIOC_ALLOCBUFFER - Allocate an audio buffer
        *

@@ -414,23 +414,18 @@ struct oneshot_lowerhalf_s *oneshot_initialize(int chan, uint16_t resolution)
 
   periph = timer_group_periph_signals.groups[GROUP_ID].module;
 
-  PERIPH_RCC_ACQUIRE_ATOMIC(periph, ref_count)
-    {
-      if (ref_count == 0)
-        {
-          timer_ll_enable_bus_clock(GROUP_ID, true);
-          timer_ll_reset_register(GROUP_ID);
-        }
-    }
+  /* esp-hal-3rdparty release/v5.1.c (pinned via ESP_HAL_3RDPARTY_VERSION)
+   * predates the RCC abstraction (PERIPH_RCC_ACQUIRE_ATOMIC,
+   * timer_ll_enable_bus_clock, timer_ll_reset_register,
+   * esp_clk_tree_enable_src — all v5.2+). periph_module_enable() is the
+   * v5.1.c equivalent: it ungates the peripheral bus clock, resets the
+   * peripheral registers, and bumps an internal refcount. The default
+   * GPTimer clock source is always available without an explicit enable
+   * call in v5.1.c.
+   */
+  periph_module_enable(periph);
 
   timer_hal_init(&lower->hal, GROUP_ID, TIMER_ID);
-
-  ret = esp_clk_tree_enable_src((soc_module_clk_t)GPTIMER_CLK_SRC_DEFAULT,
-                                true);
-  if (ret != ESP_OK)
-    {
-      return NULL;
-    }
 
   /* Configure clock source */
 

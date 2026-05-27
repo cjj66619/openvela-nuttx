@@ -168,12 +168,35 @@ void xtensa_appcpu_start(void)
   xtensa_set_cpenable(CONFIG_XTENSA_CP_INITSET);
 #endif
 
-  /* Then switch contexts. This instantiates the exception context of the
-   * tcb at the head of the assigned task list.  In this case, this should
-   * be the CPUs NULL task.
+  /* Enter the IDLE task entry point directly.
+   *
+   * The original NuttX path here was xtensa_context_restore() (a macro
+   * for sys_call0(SYS_restore_context)), with the comment "this
+   * instantiates the exception context of the tcb at the head of the
+   * assigned task list".  That does not work on the very first start of
+   * an APP CPU: there is no pending context to switch to, and the
+   * syscall's exception_entry overwrites the carefully prepared register
+   * file at SP (up_initial_state put PC=tcb->start, A1=top-of-stack, ...
+   * there).  After the dispatch handler sees no context switch needed it
+   * RFE's back to the caller, the function epilogue then "returns" to
+   * the ROM boot trampoline and dies on a BREAK in ROM (PC=0x40034c4d
+   * on ESP32-S3).
+   *
+   * Calling tcb->start() (== nx_idle_trampoline) directly avoids the
+   * broken syscall round-trip: SP is already correctly positioned for
+   * normal C calls, nx_idle_trampoline never returns, and once tasks
+   * are scheduled on this CPU the normal interrupt-driven context
+   * switch path will save/restore through tcb->xcp.regs as expected.
    */
 
-  xtensa_context_restore();
+  tcb->start();
+
+  /* Should never reach here */
+
+  for (;;)
+    {
+      __asm__ __volatile__("waiti 0");
+    }
 }
 
 /****************************************************************************

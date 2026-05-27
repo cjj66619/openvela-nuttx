@@ -38,6 +38,8 @@
 #include "stm32.h"
 #include "stm32f4discovery.h"
 
+#include "boot_timing.h"
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -55,6 +57,9 @@
 
 void stm32_boardinitialize(void)
 {
+  boot_timing_init();
+  boot_mark("boardinitialize");
+
 #if defined(CONFIG_STM32_SPI1) || defined(CONFIG_STM32_SPI2) || defined(CONFIG_STM32_SPI3)
   /* Configure SPI chip selects if 1) SPI is not disabled, and 2) the weak
    * function stm32_spidev_initialize() has been brought into the link.
@@ -93,6 +98,8 @@ void stm32_boardinitialize(void)
 
   board_autoled_initialize();
 #endif
+
+  boot_mark("boardinitialize_done");
 }
 
 /****************************************************************************

@@ -25,3 +25,34 @@
 #ifdef CONFIG_SYSTEM_ADBD
 adbd &
 #endif
+
+#ifdef CONFIG_EXAMPLES_LEDNODE
+lednode &
+#endif
+
+#ifdef CONFIG_EXAMPLES_WIFIMULTI
+wifimulti
+#endif
+
+#ifdef CONFIG_EXAMPLES_DISCOVER
+discover &
+#endif
+
+#ifdef CONFIG_NETUTILS_PTPD
+ptpd -i wlan0 -r -S -B &
+#endif
+
+#ifdef CONFIG_EXAMPLES_HTTPNODE
+httpnode &
+#endif
+
+#ifdef CONFIG_EXAMPLES_INFERD
+#endif
+
+#ifdef CONFIG_EXAMPLES_NODELINK_DAEMON
+nodelink_daemon &
+#endif
+
+#ifdef CONFIG_EXAMPLES_KWSNODE_AUTOSTART
+kwsnode -t 70 -L 4449 &
+#endif

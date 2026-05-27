@@ -545,9 +545,24 @@ uint32_t *xtensa_debug_handler(uint32_t *regs)
     {
       xtensa_singlestep_handler();
     }
+  else if (cause & 0x8)  /* BREAK instruction (XCHAL_DEBUGCAUSE_BREAK_MASK) */
+    {
+      _alert("BREAK at PC=0x%08lx PS=0x%08lx cause=0x%lx\n",
+             (unsigned long)regs[REG_PC],
+             (unsigned long)regs[REG_PS],
+             (unsigned long)cause);
+      for (;;)
+        {
+          __asm__ __volatile__("waiti 0");
+        }
+    }
   else
     {
       _alert("Unhandled debug cause 0x%x\n", cause);
+      for (;;)
+        {
+          __asm__ __volatile__("waiti 0");
+        }
     }
 
   if (!irq)
