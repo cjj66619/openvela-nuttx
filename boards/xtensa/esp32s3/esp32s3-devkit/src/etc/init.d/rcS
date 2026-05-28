@@ -54,5 +54,5 @@ nodelink_daemon &
 #endif
 
 #ifdef CONFIG_EXAMPLES_KWSNODE_AUTOSTART
-kwsnode -t 70 -L 4449 &
+kwsnode -t 70 -L 4449 -q &
 #endif
