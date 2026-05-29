@@ -54,5 +54,7 @@ nodelink_daemon &
 #endif
 
 #ifdef CONFIG_EXAMPLES_KWSNODE_AUTOSTART
+#if 0  /* v35.2: KWS autostart disabled for data collection (frees the audio device so `kwsnode -R` records without the DMA stall). Re-enable for production deploy. */
 kwsnode -t 70 -L 4449 -q &
+#endif
 #endif
